@@ -15,8 +15,8 @@
 Ensure you have Rust, Cargo, `pkg-config`, and `libnotmuch` headers installed.
 
 ```bash
-git clone https://seed.boers.email/z2AdUML1AaZmUVidUJ4vwQDJhmvKg.git
-cd z2AdUML1AaZmUVidUJ4vwQDJhmvKg
+git clone https://seed.boers.email/z2AdUML1AaZmUVidUJ4vwQDJhmvKg.git mq
+cd mq
 cargo install --path .
 ```
 
