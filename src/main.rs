@@ -3,20 +3,20 @@ use clap::Parser;
 use crossterm::{
     event::{KeyCode, KeyEventKind, KeyModifiers},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
-use std::sync::Arc;
+use ratatui::{Terminal, backend::CrosstermBackend};
 use std::path::PathBuf;
+use std::sync::Arc;
 
+pub mod config;
+pub mod events;
 pub mod mail;
 pub mod ui;
-pub mod events;
-pub mod config;
 
+use config::Config;
 use events::{AppEvent, EventHandler};
 use mail::Searcher;
-use config::Config;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -38,7 +38,7 @@ enum AppMessage {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     let app_config = Arc::new(Config::load(cli.config.as_deref()).unwrap_or_default());
-    
+
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -51,10 +51,7 @@ async fn main() -> Result<()> {
     let res = run_app(&mut terminal, &mut state, searcher, app_config).await;
 
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-    )?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen,)?;
     terminal.show_cursor()?;
 
     if let Err(err) = res {
@@ -73,7 +70,7 @@ async fn run_app(
     let limit = config.max_results.unwrap_or(100);
     let mut events = EventHandler::new(250);
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AppMessage>();
-    
+
     // Send initial search
     if !state.search_query.is_empty() {
         let q = state.search_query.clone();
@@ -132,7 +129,7 @@ async fn run_app(
                                             while idx > 0 && !chars[idx-1].is_whitespace() {
                                                 idx -= 1;
                                             }
-                                            
+
                                             let mut new_chars = Vec::new();
                                             for (i, c) in chars.iter().enumerate() {
                                                 if i < idx || i >= state.search_cursor {
@@ -193,17 +190,17 @@ async fn run_app(
                                 }
                             } else {
                                 match key.code {
-                                    KeyCode::Char('q') | KeyCode::Esc => {
-                                        if state.show_help {
-                                            state.show_help = false;
-                                        } else if state.show_folder_info {
-                                            state.show_folder_info = false;
-                                        } else if state.is_searching {
-                                            state.is_searching = false;
-                                        } else {
-                                            return Ok(());
-                                        }
+                                KeyCode::Char('q') | KeyCode::Esc => {
+                                    if state.show_help {
+                                        state.show_help = false;
+                                    } else if state.show_folder_info {
+                                        state.show_folder_info = false;
+                                    } else if state.is_searching {
+                                        state.is_searching = false;
+                                    } else {
+                                        return Ok(());
                                     }
+                                }
                                 KeyCode::Char('/') => {
                                     if !state.is_searching {
                                         state.is_searching = true;
@@ -259,7 +256,7 @@ async fn run_app(
                                                         let hash = format!("{:x}", hasher.finalize());
                                                         // Truncate hash to 16 chars for cleaner temp files
                                                         let safe_filename = format!("mq-{}.html", &hash[..16]);
-                                                        
+
                                                         let temp_path = std::env::temp_dir().join(safe_filename);
                                                         if std::fs::write(&temp_path, html).is_ok() {
                                                             if let Some(cmd_str) = browser_cmd {
@@ -366,7 +363,7 @@ async fn run_app(
                                             // Suspend TUI and open pager
                                             disable_raw_mode()?;
                                             execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-                                            
+
                                             let pager = config.pager.clone()
                                                 .unwrap_or_else(|| std::env::var("PAGER").unwrap_or_else(|_| "less -R".to_string()));
                                             let mut parts = pager.split_whitespace();
@@ -378,7 +375,7 @@ async fn run_app(
                                                 proc.arg(path);
                                                 let _ = proc.status();
                                             }
-                                            
+
                                             // Restore TUI
                                             enable_raw_mode()?;
                                             execute!(terminal.backend_mut(), EnterAlternateScreen)?;
@@ -397,17 +394,17 @@ async fn run_app(
                             if let Some(task) = search_task.take() {
                                 task.abort();
                             }
-                            
+
                             let q = state.search_query.clone();
                             let s = searcher.clone();
                             let t = tx.clone();
-                            
+
                             search_task = Some(tokio::spawn(async move {
                                 tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                                 let res = tokio::task::spawn_blocking(move || {
                                     s.search(&q, limit)
                                 }).await;
-                                
+
                                 if let Ok(Ok(results)) = res {
                                     let _ = t.send(AppMessage::SearchResults(results));
                                 }
@@ -422,13 +419,15 @@ async fn run_app(
 }
 
 fn jump_word_left(s: &str, mut idx: usize) -> usize {
-    if idx == 0 { return 0; }
+    if idx == 0 {
+        return 0;
+    }
     let chars: Vec<char> = s.chars().collect();
     idx -= 1;
     while idx > 0 && chars[idx].is_whitespace() {
         idx -= 1;
     }
-    while idx > 0 && !chars[idx-1].is_whitespace() {
+    while idx > 0 && !chars[idx - 1].is_whitespace() {
         idx -= 1;
     }
     idx
@@ -436,7 +435,9 @@ fn jump_word_left(s: &str, mut idx: usize) -> usize {
 
 fn jump_word_right(s: &str, mut idx: usize) -> usize {
     let chars: Vec<char> = s.chars().collect();
-    if idx >= chars.len() { return chars.len(); }
+    if idx >= chars.len() {
+        return chars.len();
+    }
     while idx < chars.len() && chars[idx].is_whitespace() {
         idx += 1;
     }
@@ -449,19 +450,17 @@ fn jump_word_right(s: &str, mut idx: usize) -> usize {
 fn trigger_preview(
     path: &PathBuf,
     tx: &tokio::sync::mpsc::UnboundedSender<AppMessage>,
-    preview_task: &mut Option<tokio::task::JoinHandle<()>>
+    preview_task: &mut Option<tokio::task::JoinHandle<()>>,
 ) {
     if let Some(task) = preview_task.take() {
         task.abort();
     }
-    
+
     let path = path.clone();
     let t = tx.clone();
     *preview_task = Some(tokio::spawn(async move {
-        let res = tokio::task::spawn_blocking(move || {
-            mail::preview::generate_preview(&path)
-        }).await;
-        
+        let res = tokio::task::spawn_blocking(move || mail::preview::generate_preview(&path)).await;
+
         if let Ok(Ok(preview)) = res {
             let _ = t.send(AppMessage::PreviewLoaded(preview));
         }
